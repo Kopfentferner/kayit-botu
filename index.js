@@ -1,15 +1,11 @@
-require("dotenv").config(); // 1. EKLENDİ: Tokeni okuması için şart
-const { Client, GatewayIntentBits, PermissionsBitField } = require("discord.js");
+require("dotenv").config(); // .env dosyasını okumak için şart
+const { Client, GatewayIntentBits } = require("discord.js");
 const express = require("express");
 
-// 🌐 WEB SERVER
+// 🌐 WEB SERVER (Render için)
 const app = express();
-app.get("/", (req, res) => {
-  res.send("Bot çalışıyor 🚀");
-});
-app.listen(3000, () => {
-  console.log("🌍 Web server aktif");
-});
+app.get("/", (req, res) => res.send("Bot 7/24 Aktif! 🚀"));
+app.listen(3000, () => console.log("🌍 Web server aktif"));
 
 // 🤖 DISCORD CLIENT
 const client = new Client({
@@ -21,10 +17,9 @@ const client = new Client({
   ]
 });
 
-// 🔴 ROL ID’LERİN
+// 🔴 AYARLAR (ID'lerini kontrol et)
 const KAYITLI_ROL_ID = "1253327741063794771";
 const KAYITSIZ_ROL_ID = "1253313874342711337";
-
 const PREFIX = "!";
 
 client.once("ready", () => {
@@ -32,40 +27,32 @@ client.once("ready", () => {
 });
 
 client.on("messageCreate", async (message) => {
-  if (message.author.bot) return;
-  if (!message.content.startsWith(PREFIX)) return;
+  if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
   if (command === "kayıt") {
-    // Yetki Kontrolü
-    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-      return message.reply("❌ Yetkin yok.");
-    }
+    const isim = args[0];
+    const yas = args[1];
 
-    // 2. DÜZELTME: Kayıt edilecek kişiyi belirle (Etiketlenen kişi)
-    const uye = message.mentions.members.first(); 
-    
-    // Argümanları düzeltiyoruz (Etiket 0. index olduğu için isim 1, yaş 2 olur)
-    // Kullanım: !kayıt @kullanıcı İsim Yaş
-    const isim = args[1]; 
-    const yas = args[2];
-
-    if (!uye || !isim || !yas) {
-      return message.reply("❗ Kullanım: `!kayıt @Kullanıcı İsim Yaş`");
+    // İsim veya yaş eksikse uyar
+    if (!isim || !yas) {
+      return message.reply("❗ Kullanım: `!kayıt İsim Yaş` (Örn: `!kayıt Ahmet 18`)");
     }
 
     try {
-      // 3. DÜZELTME: 'message.member' yerine 'uye' değişkenini kullanıyoruz
-      await uye.setNickname(`${isim} | ${yas}`);
-      await uye.roles.add(KAYITLI_ROL_ID);
-      await uye.roles.remove(KAYITSIZ_ROL_ID);
+      // Kullanıcının ismini değiştir (İsim | Yaş formatı)
+      await message.member.setNickname(`${isim} | ${yas}`);
+      
+      // Rolleri güncelle
+      await message.member.roles.add(KAYITLI_ROL_ID);
+      await message.member.roles.remove(KAYITSIZ_ROL_ID);
 
-      message.reply(`✅ **${uye.user.username}** başarıyla **${isim} | ${yas}** olarak kaydedildi.`);
+      message.reply(`✅ Kayıt işlemin başarıyla tamamlandı, hoş geldin **${isim}**!`);
     } catch (err) {
       console.error(err);
-      message.reply("❌ Kayıt sırasında hata oluştu. (Botun rolü, verilecek rolden daha yukarıda olmalı!)");
+      message.reply("❌ Kayıt sırasında bir hata oluştu. (Botun rolü senin rolünden üstte olmalı!)");
     }
   }
 });
