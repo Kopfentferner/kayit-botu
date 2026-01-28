@@ -21,17 +21,17 @@ def keep_alive():
 # -------------------- 🔧 AYARLAR --------------------
 TOKEN = os.getenv("TOKEN")
 
+# Başvuru sistemi ayarları
 BASVURULAR_KATEGORI_ADI = "Başvurular"
-
 YETKILI_ROLLER = [
     1253285883826929810,
     1465050726576427263,
     1465056480871845949
 ]
 
-# 🔐 KAYIT ROLLERİ
-KAYITLI_ROL_ID = 1253327741063794771
-KAYITSIZ_ROL_ID = 1253313874342711337
+# Kayıt sistemi ayarları
+KAYIT_YETKILI_ROL_ID = 1253313874342711337  # SW rolü (kayıtsız rol)
+KAYIT_ROL_ID = 1253327741063794771          # Kayıt rolü (verilecek rol)
 
 # -------------------- 🔒 TICKET KAPATMA --------------------
 class TicketKapatView(discord.ui.View):
@@ -92,14 +92,14 @@ class VIPBasvuruModal(discord.ui.Modal, title="VIP Başvuru Formu"):
             }
         )
 
-# -------------------- 📂 BAŞVURU KANALI --------------------
+# -------------------- 📂 ORTAK BAŞVURU KANALI --------------------
 async def basvuru_kanali_olustur(interaction, tur, alanlar):
     guild = interaction.guild
     category = discord.utils.get(guild.categories, name=BASVURULAR_KATEGORI_ADI)
 
     if not category:
         return await interaction.response.send_message(
-            "❌ Başvurular kategorisi bulunamadı!",
+            f"❌ `{BASVURULAR_KATEGORI_ADI}` kategorisi bulunamadı!",
             ephemeral=True
         )
 
@@ -107,14 +107,14 @@ async def basvuru_kanali_olustur(interaction, tur, alanlar):
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        interaction.user: discord.PermissionOverwrite(read_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True)
+        interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
     for rid in YETKILI_ROLLER:
         role = guild.get_role(rid)
         if role:
-            overwrites[role] = discord.PermissionOverwrite(read_messages=True)
+            overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
     channel = await guild.create_text_channel(
         name=f"{tur}-basvuru-{num}",
@@ -124,7 +124,7 @@ async def basvuru_kanali_olustur(interaction, tur, alanlar):
 
     embed = discord.Embed(
         title=f"📌 Yeni {tur.upper()} Başvurusu",
-        color=discord.Color.blue()
+        color=discord.Color.gold() if tur == "vip" else discord.Color.blue()
     )
 
     embed.add_field(name="Başvuran", value=interaction.user.mention, inline=False)
@@ -132,7 +132,13 @@ async def basvuru_kanali_olustur(interaction, tur, alanlar):
     for k, v in alanlar.items():
         embed.add_field(name=k, value=v, inline=False)
 
-    await channel.send(embed=embed, view=TicketKapatView())
+    yetkili_ping = " ".join([f"<@&{r}>" for r in YETKILI_ROLLER])
+
+    await channel.send(
+        content=yetkili_ping,
+        embed=embed,
+        view=TicketKapatView()
+    )
 
     await interaction.response.send_message(
         f"✅ Başvurun alındı: {channel.mention}",
@@ -146,60 +152,4 @@ class AnaMenu(discord.ui.View):
 
     @discord.ui.button(label="Admin Başvuru", style=discord.ButtonStyle.success, emoji="🛡️")
     async def admin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AdminBasvuruModal())
-
-    @discord.ui.button(label="VIP Başvuru", style=discord.ButtonStyle.primary, emoji="💎")
-    async def vip(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VIPBasvuruModal())
-
-# -------------------- 🤖 BOT --------------------
-class MyBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.members = True
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
-
-    async def on_ready(self):
-        print(f"{self.user} aktif!")
-        self.add_view(AnaMenu())
-        self.add_view(TicketKapatView())
-
-bot = MyBot()
-
-# -------------------- 📋 PANEL --------------------
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def sistem_kur(ctx):
-    embed = discord.Embed(
-        title="📋 Başvuru Paneli",
-        description="İhtiyacınıza uygun butonu kullanın.",
-        color=discord.Color.green()
-    )
-    await ctx.send(embed=embed, view=AnaMenu())
-
-# -------------------- 🧾 KAYIT KOMUTU (SELF) --------------------
-@bot.command(name="kayıt")
-async def kayit(ctx, isim: str, soyisim: str, yas: int):
-    member = ctx.author
-
-    kayitli_rol = ctx.guild.get_role(1253327741063794771)
-    kayitsiz_rol = ctx.guild.get_role(1253313874342711337)
-
-    if kayitli_rol in member.roles:
-        return await ctx.reply("⚠️ Zaten kayıtlısın.")
-
-    try:
-        await member.edit(nick=f"{isim} {soyisim} | {yas}")
-    except discord.Forbidden:
-        return await ctx.reply("❌ Nick değiştirme yetkim yok.")
-
-    await member.add_roles(kayitli_rol)
-    if kayitsiz_rol in member.roles:
-        await member.remove_roles(kayitsiz_rol)
-
-    await ctx.reply(f"✅ Kayıt başarılı! Hoş geldin **{isim} {soyisim} | {yas}**")
-
-# -------------------- 🚀 START --------------------
-keep_alive()
-bot.run(TOKEN)
+        await interaction.response
