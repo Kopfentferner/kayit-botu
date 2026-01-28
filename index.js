@@ -23,7 +23,7 @@ TOKEN = 'BURAYA_BOT_TOKENINI_YAZ'
 KAYITLI_ROL_ID = 1253327741063794771
 KAYITSIZ_ROL_ID = 1253313874342711337
 BASVURULAR_KATEGORI_ADI = "Başvurular"  # Kategorinin tam adı
-DESTEK_LOG_KANALI_ID = 111111111111111111  # Şikayetlerin gideceği kanal
+DESTEK_LOG_KANALI_ID = 1466003317426749588  # Şikayetlerin gideceği kanal
 
 # Yetki başvurularını ve destek taleplerini görecek 3 Yetkili Rol ID'si
 YETKILI_ROLLER = [
