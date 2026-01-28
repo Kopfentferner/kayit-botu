@@ -5,144 +5,201 @@ import os
 from flask import Flask
 from threading import Thread
 
-# --- 🌐 RENDER 7/24 AKTİF TUTMA SİSTEMİ ---
+# -------------------- 🌐 RENDER 7/24 --------------------
 app = Flask('')
+
 @app.route('/')
 def home():
-    return "Bot Aktif! 🚀"
+    return "Bot Aktif 🚀"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
+    Thread(target=run).start()
 
-# --- 🔴 AYARLAR ---
-TOKEN = 'BURAYA_BOT_TOKENINI_YAZ'
-KAYITLI_ROL_ID = 1253327741063794771
-KAYITSIZ_ROL_ID = 1253313874342711337
-BASVURULAR_KATEGORI_ADI = "Başvurular"  # Kategorinin tam adı
-DESTEK_LOG_KANALI_ID = 1466003317426749588  # Şikayetlerin gideceği kanal
+# -------------------- 🔧 AYARLAR --------------------
+TOKEN = os.getenv("TOKEN")
 
-# Yetki başvurularını ve destek taleplerini görecek 3 Yetkili Rol ID'si
+BASVURULAR_KATEGORI_ADI = "Başvurular"
+
 YETKILI_ROLLER = [
-    1253285883826929810, 
-    1465050726576427263, 
+    1253285883826929810,
+    1465050726576427263,
     1465056480871845949
 ]
 
-# --- 🔒 TICKET KAPATMA BUTONU ---
+# 🔐 KAYIT ROLLERİ
+KAYITLI_ROL_ID = 1253327741063794771
+KAYITSIZ_ROL_ID = 1253313874342711337
+
+# -------------------- 🔒 TICKET KAPATMA --------------------
 class TicketKapatView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Talebi Kapat & Sil", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="btn_kapat")
-    async def kapat_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Kanal 5 saniye içinde siliniyor...", ephemeral=True)
+    @discord.ui.button(
+        label="Başvuruyu Kapat & Sil",
+        style=discord.ButtonStyle.danger,
+        emoji="🔒",
+        custom_id="btn_kapat"
+    )
+    async def kapat(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "⏳ Kanal 5 saniye içinde siliniyor...",
+            ephemeral=True
+        )
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
-# --- 📝 YETKİ BAŞVURU FORMU (MODAL) ---
-class YetkiBasvuruModal(discord.ui.Modal, title='Admin Başvuru Formu'):
-    isim_yas = discord.ui.TextInput(label='İsim ve Yaşınız', placeholder='Örn: Ahmet, 20', required=True)
-    sure = discord.ui.TextInput(label='Sunucudaki süreniz?', placeholder='Örn: 3 Ay', required=True)
-    komut = discord.ui.TextInput(label='Adminlik komutlarını biliyor musunuz?', placeholder='Evet/Hayır', required=True)
-    steam = discord.ui.TextInput(label='Steam Profil Linkiniz', required=True)
+# -------------------- 📝 ADMIN BAŞVURU --------------------
+class AdminBasvuruModal(discord.ui.Modal, title="Admin Başvuru Formu"):
+    isim_yas = discord.ui.TextInput(label="İsim / Yaş", required=True)
+    sure = discord.ui.TextInput(label="Sunucudaki Süreniz", required=True)
+    bilgi = discord.ui.TextInput(label="Adminlik bilginiz var mı?", required=True)
+    steam = discord.ui.TextInput(label="Steam Profil Linki", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        category = discord.utils.get(guild.categories, name=BASVURULAR_KATEGORI_ADI)
-        
-        if not category:
-            return await interaction.response.send_message(f"❌ '{BASVURULAR_KATEGORI_ADI}' kategorisi bulunamadı!", ephemeral=True)
+        await basvuru_kanali_olustur(
+            interaction,
+            "admin",
+            {
+                "İsim / Yaş": self.isim_yas.value,
+                "Sunucu Süresi": self.sure.value,
+                "Admin Bilgisi": self.bilgi.value,
+                "Steam": self.steam.value
+            }
+        )
 
-        # Kanal sayısını bul ve yeni ismi belirle
-        num = len([c for c in guild.channels if c.name.startswith("basvuru-")]) + 1
-        
-        # İzinleri Ayarla
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, read_message_history=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        for r_id in YETKILI_ROLLER:
-            role = guild.get_role(r_id)
-            if role: overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+# -------------------- 💎 VIP BAŞVURU --------------------
+class VIPBasvuruModal(discord.ui.Modal, title="VIP Başvuru Formu"):
+    isim = discord.ui.TextInput(label="İsim", required=True)
+    yas = discord.ui.TextInput(label="Yaş", required=True)
+    neden = discord.ui.TextInput(
+        label="Neden VIP olmak istiyorsunuz?",
+        style=discord.TextStyle.paragraph,
+        required=True
+    )
 
-        channel = await guild.create_text_channel(name=f"basvuru-{num}", category=category, overwrites=overwrites)
-        
-        embed = discord.Embed(title=f"Yeni Yetki Başvurusu #{num}", color=discord.Color.blue())
-        embed.add_field(name="Aday", value=interaction.user.mention)
-        embed.add_field(name="İsim/Yaş", value=self.isim_yas.value)
-        embed.add_field(name="Süre", value=self.sure.value)
-        embed.add_field(name="Komut Bilgisi", value=self.komut.value)
-        embed.add_field(name="Steam", value=self.steam.value, inline=False)
-        
-        yetkili_mention = " ".join([f"<@&{rid}>" for rid in YETKILI_ROLLER])
-        await channel.send(content=yetkili_mention, embed=embed, view=TicketKapatView())
-        await interaction.response.send_message(f"✅ Başvurunuz alındı: {channel.mention}", ephemeral=True)
-
-# --- 📩 DESTEK SİSTEMİ MODALLARI ---
-class SikayetModal(discord.ui.Modal, title='Şikayet Et'):
-    kisi = discord.ui.TextInput(label='Kimi Şikayet Ediyorsun?', required=True)
-    sebep = discord.ui.TextInput(label='Sebep', style=discord.TextStyle.paragraph, required=True)
     async def on_submit(self, interaction: discord.Interaction):
-        channel = interaction.guild.get_channel(DESTEK_LOG_KANALI_ID)
-        embed = discord.Embed(title="🚨 Yeni Şikayet", color=discord.Color.red())
-        embed.add_field(name="Şikayetçi", value=interaction.user.mention)
-        embed.add_field(name="Şikayet Edilen", value=self.kisi.value)
-        embed.add_field(name="Sebep", value=self.sebep.value)
-        await channel.send(embed=embed)
-        await interaction.response.send_message("✅ Şikayetiniz log kanalına iletildi.", ephemeral=True)
+        await basvuru_kanali_olustur(
+            interaction,
+            "vip",
+            {
+                "İsim": self.isim.value,
+                "Yaş": self.yas.value,
+                "Başvuru Nedeni": self.neden.value
+            }
+        )
 
-# --- 🔘 ANA MENÜ GÖRÜNÜMÜ ---
+# -------------------- 📂 BAŞVURU KANALI --------------------
+async def basvuru_kanali_olustur(interaction, tur, alanlar):
+    guild = interaction.guild
+    category = discord.utils.get(guild.categories, name=BASVURULAR_KATEGORI_ADI)
+
+    if not category:
+        return await interaction.response.send_message(
+            "❌ Başvurular kategorisi bulunamadı!",
+            ephemeral=True
+        )
+
+    num = len([c for c in guild.channels if c.name.startswith(f"{tur}-basvuru")]) + 1
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        interaction.user: discord.PermissionOverwrite(read_messages=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True)
+    }
+
+    for rid in YETKILI_ROLLER:
+        role = guild.get_role(rid)
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(read_messages=True)
+
+    channel = await guild.create_text_channel(
+        name=f"{tur}-basvuru-{num}",
+        category=category,
+        overwrites=overwrites
+    )
+
+    embed = discord.Embed(
+        title=f"📌 Yeni {tur.upper()} Başvurusu",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(name="Başvuran", value=interaction.user.mention, inline=False)
+
+    for k, v in alanlar.items():
+        embed.add_field(name=k, value=v, inline=False)
+
+    await channel.send(embed=embed, view=TicketKapatView())
+
+    await interaction.response.send_message(
+        f"✅ Başvurun alındı: {channel.mention}",
+        ephemeral=True
+    )
+
+# -------------------- 🔘 ANA PANEL --------------------
 class AnaMenu(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Admin Başvuru", style=discord.ButtonStyle.success, emoji="📩", custom_id="btn_admin")
-    async def admin_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(YetkiBasvuruModal())
+    @discord.ui.button(label="Admin Başvuru", style=discord.ButtonStyle.success, emoji="🛡️")
+    async def admin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AdminBasvuruModal())
 
-    @discord.ui.button(label="Şikayet Et", style=discord.ButtonStyle.danger, emoji="🚨", custom_id="btn_sikayet")
-    async def sikayet_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SikayetModal())
+    @discord.ui.button(label="VIP Başvuru", style=discord.ButtonStyle.primary, emoji="💎")
+    async def vip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VIPBasvuruModal())
 
-# --- 🤖 BOT SINIFI ---
+# -------------------- 🤖 BOT --------------------
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True
         intents.members = True
+        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def on_ready(self):
-        print(f'{self.user} hazır ve 7/24 aktif!')
+        print(f"{self.user} aktif!")
         self.add_view(AnaMenu())
         self.add_view(TicketKapatView())
 
 bot = MyBot()
 
+# -------------------- 📋 PANEL --------------------
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def sistem_kur(ctx):
-    embed = discord.Embed(title="Pro-Pub Sunucu Yönetim Paneli", description="Aşağıdaki butonları kullanarak işlem yapabilirsiniz.", color=discord.Color.gold())
+    embed = discord.Embed(
+        title="📋 Başvuru Paneli",
+        description="İhtiyacınıza uygun butonu kullanın.",
+        color=discord.Color.green()
+    )
     await ctx.send(embed=embed, view=AnaMenu())
 
-@bot.command()
-async def kayıt(ctx, isim=None, yas=None):
-    if not isim or not yas:
-        return await ctx.send("❗ Kullanım: `!kayıt İsim Yaş` ")
-    
-    try:
-        await ctx.author.edit(nick=f"{isim} | {yas}")
-        await ctx.author.add_roles(ctx.guild.get_role(KAYITLI_ROL_ID))
-        await ctx.author.remove_roles(ctx.guild.get_role(KAYITSIZ_ROL_ID))
-        await ctx.send(f"✅ Hoş geldin **{isim}**, kaydın yapıldı!")
-    except Exception as e:
-        await ctx.send("❌ Yetki hatası: Botun rolü en üstte olmalı.")
+# -------------------- 🧾 KAYIT KOMUTU (SELF) --------------------
+@bot.command(name="kayıt")
+async def kayit(ctx, isim: str, soyisim: str, yas: int):
+    member = ctx.author
 
-# Botu Çalıştır
+    kayitli_rol = ctx.guild.get_role(1253327741063794771)
+    kayitsiz_rol = ctx.guild.get_role(1253313874342711337)
+
+    if kayitli_rol in member.roles:
+        return await ctx.reply("⚠️ Zaten kayıtlısın.")
+
+    try:
+        await member.edit(nick=f"{isim} {soyisim} | {yas}")
+    except discord.Forbidden:
+        return await ctx.reply("❌ Nick değiştirme yetkim yok.")
+
+    await member.add_roles(kayitli_rol)
+    if kayitsiz_rol in member.roles:
+        await member.remove_roles(kayitsiz_rol)
+
+    await ctx.reply(f"✅ Kayıt başarılı! Hoş geldin **{isim} {soyisim} | {yas}**")
+
+# -------------------- 🚀 START --------------------
 keep_alive()
 bot.run(TOKEN)
